@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SANDWINGS KDS</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #101010;
+  color: white;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+header {
+  background: #181818;
+  border-bottom: 4px solid #ff5a00;
+  padding: 18px 25px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.logo {
+  font-size: 34px;
+  font-weight: 900;
+}
+
+.logo span {
+  color: #ff5a00;
+}
+
+.header-right {
+  text-align: right;
+}
+
+.header-right strong {
+  color: #ff5a00;
+}
+
+#orders {
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+}
+
+.ticket {
+  background: #242424;
+  border: 2px solid #444;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.ticket.late {
+  border-color: #ff3b30;
+}
+
+.ticket-header {
+  background: #ff5a00;
+  padding: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.order-number {
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.timer {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.ticket-body {
+  padding: 16px;
+}
+
+.item {
+  border-bottom: 1px solid #444;
+  padding: 12px 0;
+}
+
+.item:last-child {
+  border-bottom: none;
+}
+
+.item-name {
+  font-size: 21px;
+  font-weight: bold;
+}
+
+.qty {
+  color: #ff9b58;
+  margin-right: 7px;
+}
+
+.modifier {
+  margin: 5px 0 0 28px;
+  color: #ddd;
+  font-size: 15px;
+}
+
+.ticket-footer {
+  padding: 14px;
+}
+
+.done {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  background: #ff5a00;
+  color: white;
+  font-size: 19px;
+  font-weight: bold;
+  padding: 15px;
+  cursor: pointer;
+}
+
+.done:hover {
+  background: #ff7626;
+}
+
+.empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  margin-top: 120px;
+  color: #777;
+}
+
+.empty h2 {
+  font-size: 32px;
+  color: #aaa;
+}
+
+.status {
+  color: #aaa;
+  font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">SAND<span>WINGS</span> KDS</div>
+
+  <div class="header-right">
+    <strong>KITCHEN</strong><br>
+    <span class="status" id="status">Waiting for orders...</span>
+  </div>
+</header>
+
+<div id="orders"></div>
+
+<script>
+
+const STORAGE_KEY = "sandwings_orders";
+
+function getOrders() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveOrders(orders) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function elapsedTime(created) {
+
+  const start = new Date(created).getTime();
+
+  if (!Number.isFinite(start)) {
+    return "0:00";
+  }
+
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - start) / 1000)
+  );
+
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds % 60;
+
+  return minutes + ":" + String(remaining).padStart(2, "0");
+}
+
+function renderOrders() {
+
+  const container = document.getElementById("orders");
+
+  let orders = getOrders();
+
+  orders = orders.filter(order =>
+    order.status !== "completed"
+  );
+
+  if (!orders.length) {
+
+    container.innerHTML = `
+      <div class="empty">
+        <h2>🔥 Kitchen Ready</h2>
+        <p>New SANDWINGS orders will appear here.</p>
+      </div>
+    `;
+
+    document.getElementById("status").textContent =
+      "Waiting for orders...";
+
+    return;
+  }
+
+  document.getElementById("status").textContent =
+    orders.length + (orders.length === 1
+      ? " active order"
+      : " active orders");
+
+  container.innerHTML = orders.map(order => {
+
+    const created =
+      order.createdAt ||
+      order.time ||
+      new Date().toISOString();
+
+    const ageMinutes =
+      (Date.now() - new Date(created).getTime()) / 60000;
+
+    const lateClass =
+      ageMinutes >= 10 ? "late" : "";
+
+    const items =
+      Array.isArray(order.items)
+        ? order.items
+        : [];
+
+    return `
+      <div class="ticket ${lateClass}">
+
+        <div class="ticket-header">
+
+          <div class="order-number">
+            #${escapeHTML(
+              order.number ||
+              order.orderNumber ||
+              order.id ||
+              "NEW"
+            )}
+          </div>
+
+          <div
+            class="timer"
+            data-created="${escapeHTML(created)}">
+            ${elapsedTime(created)}
+          </div>
+
+        </div>
+
+        <div class="ticket-body">
+
+          ${items.map(item => {
+
+            const modifiers =
+              item.modifiers ||
+              item.options ||
+              [];
+
+            return `
+              <div class="item">
+
+                <div class="item-name">
+                  <span class="qty">
+                    ${escapeHTML(
+                      item.qty ||
+                      item.quantity ||
+                      1
+                    )}×
+                  </span>
+
+                  ${escapeHTML(
+                    item.name ||
+                    item.title ||
+                    "Item"
+                  )}
+                </div>
+
+                ${
+                  Array.isArray(modifiers)
+                  ? modifiers.map(mod => `
+                      <div class="modifier">
+                        • ${escapeHTML(
+                          typeof mod === "string"
+                            ? mod
+                            : mod.name || mod.label || ""
+                        )}
+                      </div>
+                    `).join("")
+                  : ""
+                }
+
+              </div>
+            `;
+
+          }).join("")}
+
+        </div>
+
+        <div class="ticket-footer">
+
+          <button
+            class="done"
+            onclick="completeOrder(
+              '${escapeHTML(String(order.id || order.number || order.orderNumber))}'
+            )">
+            ✓ ORDER READY
+          </button>
+
+        </div>
+
+      </div>
+    `;
+
+  }).join("");
+}
+
+function completeOrder(id) {
+
+  const orders = getOrders();
+
+  const updated = orders.map(order => {
+
+    const orderID =
+      String(
+        order.id ||
+        order.number ||
+        order.orderNumber
+      );
+
+    if (orderID === String(id)) {
+      return {
+        ...order,
+        status: "completed",
+        completedAt: new Date().toISOString()
+      };
+    }
+
+    return order;
+
+  });
+
+  saveOrders(updated);
+
+  renderOrders();
+}
+
+window.addEventListener("storage", function(event) {
+
+  if (event.key === STORAGE_KEY) {
+    renderOrders();
+  }
+
+});
+
+setInterval(() => {
+
+  document
+    .querySelectorAll(".timer")
+    .forEach(timer => {
+
+      timer.textContent =
+        elapsedTime(
+          timer.dataset.created
+        );
+
+    });
+
+}, 1000);
+
+setInterval(renderOrders, 2000);
+
+renderOrders();
+
+</script>
+
+</body>
+</html>
